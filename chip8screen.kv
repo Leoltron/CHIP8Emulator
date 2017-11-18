@@ -1,0 +1,17 @@
+#:kivy 1.10.0
+
+<Pixel>:
+    size: self.side_size, self.side_size
+    canvas:
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+<CHIP8Screen>:
+    canvas:
+        Rectangle:
+            pos: self.center_x - 5, 0
+            size: 10, self.height
+
+    Pixel:
+        pos: self.parent.width - 20, self.parent.height - 20
