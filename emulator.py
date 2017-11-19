@@ -1,45 +1,69 @@
 # !/usr/bin/env python3
 import random
-from functools import wraps
 from multiprocessing import Value
 
 import font
-
-from screen import CHIP8ScreenApp, SCREEN_HEIGHT, SCREEN_WIDTH
 from timers import TimerProcess, BeepTimerProcess
+
+SCREEN_WIDTH = 64
+SCREEN_HEIGHT = 32
 
 PROGRAM_START = 0x200
 V_MAX = 0xFF
 
 
+def run_emulator(draw_queue,
+                 key_press_event,
+                 key_press_value,
+                 key_down_values,
+                 program):
+    emulator = CHIP8Emulator(draw_queue,
+                             key_press_event,
+                             key_press_value,
+                             key_down_values)
+    emulator.load_program(program)
+    emulator.execute()
+
+
 class CHIP8Emulator:
-    memory = bytearray(4096)
+    def __init__(self, draw_queue, key_press_event, key_press_value,
+                 key_down_values, program=None):
+        self.memory = bytearray(4096)
 
-    for i in range(16):
-        memory[5 * i:5 * (i + 1)] = font.FONT[i]
+        for i in range(16):
+            self.memory[5 * i:5 * (i + 1)] = font.FONT[i]
 
-    v_reg = [0] * 16
-    i_reg = 0
-    program_counter = 0
-    stack_pointer = 0
-    stack = [0] * 16
+        self.v_reg = [0] * 16
+        self.i_reg = 0
+        self.program_counter = 0
+        self.stack_pointer = 0
+        self.stack = [0] * 16
 
-    delay_timer_value = Value('i', 0)
-    delay_timer = TimerProcess(1 / 60, delay_timer_value)
+        self.delay_timer_value = Value('i', 0)
+        self.delay_timer = TimerProcess(1 / 60, self.delay_timer_value)
+        self.delay_timer.start()
 
-    sound_timer_value = Value('i', 0)
-    sound_timer = BeepTimerProcess(1 / 60, delay_timer_value)
+        self.sound_timer_value = Value('i', 0)
+        self.sound_timer = BeepTimerProcess(1 / 60, self.sound_timer_value)
+        self.sound_timer.start()
 
-    screen = [[False] * SCREEN_HEIGHT] * SCREEN_WIDTH
+        self.draw_queue = draw_queue
+        self.key_press_event = key_press_event
+        self.key_press_value = key_press_value
+        self.key_down_values = key_down_values
 
-    def __init__(self, screen_app: CHIP8ScreenApp):
-        self.screen_app = screen_app
+        self.screen = list()
+        for i in range(SCREEN_WIDTH):
+            self.screen.append([False] * SCREEN_HEIGHT)
+
+        if program:
+            self.load_program(program)
 
     def load_program(self, program_bytes):
         self.memory[PROGRAM_START:] = program_bytes
 
     def execute(self):
-        self.program_counter = 0x200
+        self.program_counter = PROGRAM_START
         while True:
             program_code = (self.memory[self.program_counter] << 8) | \
                            self.memory[self.program_counter + 1]
@@ -54,7 +78,25 @@ class CHIP8Emulator:
         self.program_counter += 2
 
     def clear_screen(self):
-        self.screen = [[False] * SCREEN_HEIGHT] * SCREEN_WIDTH
+        for x in range(SCREEN_WIDTH):
+            for y in range(SCREEN_HEIGHT):
+                if self.screen[x][y]:
+                    self.screen[x][y] = False
+                    self._switch_pixel(x, y)
+
+    def _switch_pixel(self, x, y):
+        while x < 0:
+            x += SCREEN_WIDTH
+        while x >= SCREEN_WIDTH:
+            x -= SCREEN_WIDTH
+        while y < 0:
+            y += SCREEN_HEIGHT
+        while y >= SCREEN_HEIGHT:
+            y -= SCREEN_HEIGHT
+        self.draw_queue.put((x, y))
+        old_val = self.screen[x][y]
+        self.screen[x][y] = not old_val
+        return old_val
 
     def return_back(self):
         if self.stack_pointer < 0:
@@ -199,7 +241,7 @@ class CHIP8Emulator:
         return True
 
     def jump_to_v0_sum(self, value):
-        self.program_counter = value + self.v_reg[0] -2
+        self.program_counter = value + self.v_reg[0] - 2
 
     def execute_program_b(self, program_code):
         self.jump_to_v0_sum(program_code & 0xFFF)
@@ -221,7 +263,7 @@ class CHIP8Emulator:
             dx = 0
             while line > 0:
                 if line & 0b10000000:
-                    collision = collision or self.screen_app.switch_pixel(
+                    collision = collision or self._switch_pixel(
                         x + dx, y - i)
                 line = (line << 1) & 0xff
                 dx += 1
@@ -231,13 +273,14 @@ class CHIP8Emulator:
         self.draw_sprite((program_code & 0xf00) >> 8,
                          (program_code & 0xF0) >> 4,
                          program_code & 0xF)
+        return True
 
     def skip_if_pressed(self, key):
-        if self.screen_app.is_key_pressed(key):
+        if self.key_down_values[key].value:
             self.program_counter += 2
 
     def skip_if_not_pressed(self, key):
-        if not self.screen_app.is_key_pressed(key):
+        if not self.key_down_values[key].value:
             self.program_counter += 2
 
     programs_e = {0x9E: skip_if_pressed, 0xA1: skip_if_not_pressed}
@@ -251,20 +294,20 @@ class CHIP8Emulator:
 
     def set_delay_timer_value_to_v(self, reg_num):
         with self.delay_timer_value.get_lock():
-            self.v_reg[reg_num] = self.delay_timer_value
+            self.v_reg[reg_num] = self.delay_timer_value.value
 
     def wait_and_set_pressed_key(self, reg_num):
-        self.screen_app.pressed_event.clear()
-        self.screen_app.pressed_event.wait()
-        self.v_reg[reg_num] = self.screen_app.last_pressed_key
+        self.key_press_event.clear()
+        self.key_press_event.wait()
+        self.v_reg[reg_num] = self.key_press_value.value
 
     def set_delay_timer(self, reg_num):
         with self.delay_timer_value.get_lock():
-            self.delay_timer_value = self.v_reg[reg_num]
+            self.delay_timer_value.value = self.v_reg[reg_num]
 
     def set_sound_timer(self, reg_num):
         with self.sound_timer_value.get_lock():
-            self.sound_timer_value = self.v_reg[reg_num]
+            self.sound_timer_value.value = self.v_reg[reg_num]
 
     def add_vx_to_i(self, reg_num):
         self.i_reg += self.v_reg[reg_num]
@@ -274,8 +317,8 @@ class CHIP8Emulator:
 
     def store_in_i_as_bcd(self, reg_num):
         value = self.v_reg[reg_num]
-        hundreds = value % 1000 / 100
-        tens = value % 100 / 10
+        hundreds = value % 1000 // 100
+        tens = value % 100 // 10
         ones = value % 10
         self.memory[self.i_reg] = hundreds
         self.memory[self.i_reg + 1] = tens

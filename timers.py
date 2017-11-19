@@ -1,7 +1,6 @@
 # !/usr/bin/env python3
 
 from multiprocessing import Process, Value, Event
-
 from kivy.core.audio import SoundLoader
 
 sound = SoundLoader.load('beep.wav')
@@ -15,11 +14,13 @@ class TimerProcess(Process):
         super().__init__(*args, **kwargs)
         self.interval = interval
         self.timer_value = timer_value
-        self.paused.set()
+        if timer_value.value > 0:
+            self.pause()
+        self._update_state()
 
     def cancel(self):
         self.stopped.set()
-        self.paused.set()
+        self.pause()
 
     def _update_state(self):
         with self.timer_value.get_lock():
@@ -36,7 +37,7 @@ class TimerProcess(Process):
                     if self.timer_value.value > 0:
                         self.timer_value.value -= 1
             elif self.stopped.is_set():
-                break
+                return
             self._update_state()
 
     def pause(self):
@@ -67,3 +68,14 @@ class BeepTimerProcess(TimerProcess):
         if self.paused.is_set():
             start_beeping()
         super().resume()
+
+
+# if __name__ == '__main__':
+#     freeze_support()
+#     value = Value('i', 0)
+#     p = BeepTimerProcess(1 / 60, value)
+#     p.start()
+#     with value.get_lock():
+#         value.value = 60
+#     time.sleep(2)
+#     p.terminate()

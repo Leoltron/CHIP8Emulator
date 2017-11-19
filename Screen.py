@@ -1,9 +1,8 @@
 # !/usr/bin/env python3
-from multiprocessing import Event
+from multiprocessing import Event, Value
 
 PIXEL_SIDE_SIZE = 15
-SCREEN_WIDTH = 64
-SCREEN_HEIGHT = 32
+from emulator import SCREEN_HEIGHT, SCREEN_WIDTH
 
 from kivy.config import Config
 
@@ -12,6 +11,7 @@ Config.set('graphics', 'width', str(PIXEL_SIDE_SIZE * SCREEN_WIDTH))
 Config.set('graphics', 'height', str(PIXEL_SIDE_SIZE * SCREEN_HEIGHT))
 
 from kivy.app import App
+from kivy.clock import Clock
 from kivy.uix.widget import Widget
 from kivy.core.window import Window
 from kivy.graphics.context_instructions import Color
@@ -41,8 +41,8 @@ class Pixel(Widget):
             self.update_color()
 
     def switch_active(self):
-        print("Switching x:{:d} y:{:d} ({})".format(self.x, self.y,
-                                                    str(self.size)))
+        # print("Switching x:{:d} y:{:d} ({})".format(self.x, self.y,
+        #                                             str(self.size)))
         self.active = not self.active
         self.update_color()
         return self.active
@@ -59,16 +59,19 @@ KEY_BINDINGS = {'1': 0x1, '2': 0x2, '3': 0x3, '4': 0xf,
 
 
 class CHIP8ScreenApp(App):
-    pixels = [[None] * SCREEN_HEIGHT] * SCREEN_WIDTH
+    pixels = []
 
-    screen = None
-    pressed = [False] * 0x10
-
-    def __init__(self, **kwargs):
+    def __init__(self, draw_queue, **kwargs):
         super().__init__(**kwargs)
 
+        self.draw_queue = draw_queue
+
         self.pressed_event = Event()
-        self.last_pressed_key = 0
+        self.pressed_key = Value('i', 0)
+
+        self.pressed = []
+        for i in range(0x10):
+            self.pressed.append(Value('b', False))
 
         self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_keyboard_down)
@@ -83,28 +86,35 @@ class CHIP8ScreenApp(App):
         key_name = key_code[1]
         if key_name in KEY_BINDINGS:
             key = KEY_BINDINGS[key_name]
-            self.pressed[key] = True
+            self.pressed[key].value = True
             self._on_key_pressed(key)
         return True
 
     def _on_keyboard_up(self, keyboard, key_code):
         key_name = key_code[1]
         if key_name in KEY_BINDINGS:
-            self.pressed[KEY_BINDINGS[key_name]] = False
+            self.pressed[KEY_BINDINGS[key_name]].value = False
         return True
 
     def build(self):
-        self.screen = screen = CHIP8Screen()
+        screen = CHIP8Screen()
         self.pixels = []
         for x in range(SCREEN_WIDTH):
             self.pixels.append([None] * SCREEN_HEIGHT)
 
         for y in range(SCREEN_HEIGHT):
             for x in range(SCREEN_WIDTH):
-                pixel = Pixel(pos=(x * PIXEL_SIDE_SIZE, y * PIXEL_SIDE_SIZE))
+                pixel = Pixel(pos=(
+                x * PIXEL_SIDE_SIZE, (SCREEN_HEIGHT - y-1) * PIXEL_SIDE_SIZE))
                 self.pixels[x][y] = pixel
                 screen.add_widget(pixel, index=y * SCREEN_WIDTH + x)
+
+        Clock.schedule_interval(self.check_draw_queue, 1.0 / 60.0)
         return screen
+
+    def check_draw_queue(self, dt):
+        while not self.draw_queue.empty():
+            self.switch_pixel(*self.draw_queue.get())
 
     def switch_pixel(self, x, y):
         return self.pixels[x][y].switch_active()
@@ -114,9 +124,5 @@ class CHIP8ScreenApp(App):
 
     def _on_key_pressed(self, key):
         if not self.pressed_event.is_set():
-            self.last_pressed_key = key
+            self.pressed_key.value = key
             self.pressed_event.set()
-
-
-if __name__ == '__main__':
-    CHIP8ScreenApp().run()
