@@ -105,11 +105,12 @@ class CHIP8ScreenApp(App):
         for y in range(SCREEN_HEIGHT):
             for x in range(SCREEN_WIDTH):
                 pixel = Pixel(pos=(
-                x * PIXEL_SIDE_SIZE, (SCREEN_HEIGHT - y-1) * PIXEL_SIDE_SIZE))
+                    x * PIXEL_SIDE_SIZE,
+                    (SCREEN_HEIGHT - y - 1) * PIXEL_SIDE_SIZE))
                 self.pixels[x][y] = pixel
-                screen.add_widget(pixel, index=y * SCREEN_WIDTH + x)
+                screen.add_widget(pixel)
 
-        Clock.schedule_interval(self.check_draw_queue, 1.0 / 60.0)
+        Clock.schedule_interval(self.check_draw_queue, 1.0 / 200.0)
         return screen
 
     def check_draw_queue(self, dt):

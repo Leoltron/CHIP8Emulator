@@ -1,6 +1,8 @@
 # !/usr/bin/env python3
 import random
-from multiprocessing import Value
+from multiprocessing import Value, Process
+
+import time
 
 import font
 from timers import TimerProcess, BeepTimerProcess
@@ -10,24 +12,49 @@ SCREEN_HEIGHT = 32
 
 PROGRAM_START = 0x200
 V_MAX = 0xFF
+I_MAX = 0xFFFF
+
+DEBUG = False
 
 
-def run_emulator(draw_queue,
-                 key_press_event,
-                 key_press_value,
-                 key_down_values,
-                 program):
-    emulator = CHIP8Emulator(draw_queue,
-                             key_press_event,
-                             key_press_value,
-                             key_down_values)
-    emulator.load_program(program)
-    emulator.execute()
+def debug(*args, **kwargs):
+    if DEBUG:
+        print(*args, **kwargs)
 
 
+class EmulatorProcess(Process):
+    def terminate(self):
+        self.emulator.delay_timer.terminate()
+        self.emulator.sound_timer.terminate()
+        super().terminate()
+
+    def __init__(self, draw_queue, key_press_event, key_press_value,
+                 key_down_values, program, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.emulator = CHIP8Emulator(draw_queue,
+                                      key_press_event,
+                                      key_press_value,
+                                      key_down_values)
+        self.program = program
+
+    def join(self, timeout=None):
+        self.emulator.delay_timer.stopped.set()
+        self.emulator.delay_timer.join(timeout)
+
+        self.emulator.sound_timer.stopped.set()
+        self.emulator.sound_timer.join(timeout)
+
+        super().join(timeout)
+
+    def run(self):
+        self.emulator.load_program(self.program)
+        self.emulator.execute()
+
+
+# noinspection SpellCheckingInspection
 class CHIP8Emulator:
     def __init__(self, draw_queue, key_press_event, key_press_value,
-                 key_down_values, program=None):
+                 key_down_values):
         self.memory = bytearray(4096)
 
         for i in range(16):
@@ -54,17 +81,19 @@ class CHIP8Emulator:
 
         self.screen = list()
         for i in range(SCREEN_WIDTH):
-            self.screen.append([False] * SCREEN_HEIGHT)
-
-        if program:
-            self.load_program(program)
+            column = list()
+            for n in range(SCREEN_WIDTH):
+                column.append(False)
+            self.screen.append(column)
 
     def load_program(self, program_bytes):
-        self.memory[PROGRAM_START:] = program_bytes
+        self.memory[
+        PROGRAM_START:PROGRAM_START + len(program_bytes)] = program_bytes
 
     def execute(self):
         self.program_counter = PROGRAM_START
         while True:
+            time.sleep(0.005)
             program_code = (self.memory[self.program_counter] << 8) | \
                            self.memory[self.program_counter + 1]
             self.execute_program(program_code)
@@ -72,16 +101,18 @@ class CHIP8Emulator:
     def execute_program(self, program_code, first_hex=None):
         if first_hex is None:
             first_hex = (program_code >> 12) & 0xf
+
         if not self.programs_by_first_digit[first_hex](self, program_code):
             raise ValueError(
                 'Not found program matching ' + hex(program_code)[2:].upper())
         self.program_counter += 2
 
+    # 00E0
     def clear_screen(self):
+        debug("Clearing screen...")
         for x in range(SCREEN_WIDTH):
             for y in range(SCREEN_HEIGHT):
                 if self.screen[x][y]:
-                    self.screen[x][y] = False
                     self._switch_pixel(x, y)
 
     def _switch_pixel(self, x, y):
@@ -93,16 +124,16 @@ class CHIP8Emulator:
             y += SCREEN_HEIGHT
         while y >= SCREEN_HEIGHT:
             y -= SCREEN_HEIGHT
+
         self.draw_queue.put((x, y))
         old_val = self.screen[x][y]
         self.screen[x][y] = not old_val
         return old_val
 
+    # 00EE
     def return_back(self):
-        if self.stack_pointer < 0:
-            raise IndexError
-        self.program_counter = self.stack[self.stack_pointer] - 2
         self.stack_pointer -= 1
+        self.program_counter = self.stack[self.stack_pointer]
 
     programs_0 = {0x00E0: clear_screen, 0x00EE: return_back}
 
@@ -110,9 +141,9 @@ class CHIP8Emulator:
         if program_code in self.programs_0:
             self.programs_0[program_code](self)
             return True
-        else:
-            return False
+        return False
 
+    # 1nnn
     def jump(self, location):
         self.program_counter = location - 2
 
@@ -120,15 +151,17 @@ class CHIP8Emulator:
         self.jump(program_code & 0xFFF)
         return True
 
+    # 2nnn
     def call(self, location):
-        self.stack_pointer += 1
         self.stack[self.stack_pointer] = self.program_counter
+        self.stack_pointer += 1
         self.program_counter = location - 2
 
     def execute_program_2(self, program_code):
         self.call(program_code & 0xFFF)
         return True
 
+    # 3xkk
     def skip_if_eq(self, reg_num, comparing_value):
         if self.v_reg[reg_num] == comparing_value:
             self.program_counter += 2
@@ -137,6 +170,7 @@ class CHIP8Emulator:
         self.skip_if_eq((program_code & 0xF00) >> 8, program_code & 0xFF)
         return True
 
+    # 4xkk
     def skip_if_not_eq(self, reg_num, comparing_value):
         if self.v_reg[reg_num] != comparing_value:
             self.program_counter += 2
@@ -145,6 +179,7 @@ class CHIP8Emulator:
         self.skip_if_not_eq((program_code & 0xF00) >> 8, program_code & 0xFF)
         return True
 
+    # 5xy0
     def skip_if_regs_eq(self, reg_num_1, reg_num_2):
         if self.v_reg[reg_num_1] == self.v_reg[reg_num_2]:
             self.program_counter += 2
@@ -153,9 +188,10 @@ class CHIP8Emulator:
         if program_code & 0xF != 0:
             return False
         self.skip_if_regs_eq((program_code & 0xF00) >> 8,
-                             (program_code & 0xF0) >> 4)
+                             (program_code & 0x0F0) >> 4)
         return True
 
+    # 6xkk
     def set(self, reg_num, value):
         self.v_reg[reg_num] = value
 
@@ -163,30 +199,37 @@ class CHIP8Emulator:
         self.set((program_code & 0xF00) >> 8, program_code & 0xFF)
         return True
 
+    # 7xkk
     def increment(self, reg_num, value):
-        self.v_reg[reg_num] += value
+        self.v_reg[reg_num] = (self.v_reg[reg_num] + value) & V_MAX
 
     def execute_program_7(self, program_code):
         self.increment((program_code & 0xF00) >> 8, program_code & 0xFF)
         return True
 
+    # 8xy0
     def set_reg(self, reg_num_1, reg_num_2):
         self.v_reg[reg_num_1] = self.v_reg[reg_num_2]
 
+    # 8xy1
     def set_reg_or(self, reg_num_1, reg_num_2):
         self.v_reg[reg_num_1] = self.v_reg[reg_num_1] | self.v_reg[reg_num_2]
 
+    # 8xy2
     def set_reg_and(self, reg_num_1, reg_num_2):
         self.v_reg[reg_num_1] = self.v_reg[reg_num_1] & self.v_reg[reg_num_2]
 
+    # 8xy3
     def set_reg_xor(self, reg_num_1, reg_num_2):
         self.v_reg[reg_num_1] = self.v_reg[reg_num_1] ^ self.v_reg[reg_num_2]
 
+    # 8xy4
     def sum_regs(self, reg_num_1, reg_num_2):
         result = self.v_reg[reg_num_1] + self.v_reg[reg_num_2]
         self.v_reg[0xF] = result & (V_MAX + 1)
         self.v_reg[reg_num_1] = result & V_MAX
 
+    # 8xy5
     def sub_regs(self, reg_num_1, reg_num_2):
         result = self.v_reg[reg_num_1] - self.v_reg[reg_num_2]
         self.v_reg[0xF] = int(result >= 0)
@@ -194,10 +237,12 @@ class CHIP8Emulator:
             result += V_MAX + 1
         self.v_reg[reg_num_1] = result
 
+    # 8xy6
     def rshift_reg(self, reg_num_1, reg_num_2):
         self.v_reg[0xF] = self.v_reg[reg_num_1] & 1
         self.v_reg[reg_num_1] = self.v_reg[reg_num_1] >> 1
 
+    # 8xy7
     def subn_regs(self, reg_num_1, reg_num_2):
         result = self.v_reg[reg_num_2] - self.v_reg[reg_num_1]
         self.v_reg[0xF] = int(result >= 0)
@@ -205,8 +250,9 @@ class CHIP8Emulator:
             result += V_MAX + 1
         self.v_reg[reg_num_1] = result
 
+    # 8xyE
     def lshift_reg(self, reg_num_1, reg_num_2):
-        self.v_reg[0xF] = self.v_reg[reg_num_1] & 0b10000000
+        self.v_reg[0xF] = int((self.v_reg[reg_num_1] & 0b10000000) != 0)
         self.v_reg[reg_num_1] = (self.v_reg[reg_num_1] << 1) & V_MAX
 
     programs_8 = {0: set_reg, 1: set_reg_or, 2: set_reg_and, 3: set_reg_xor,
@@ -217,11 +263,12 @@ class CHIP8Emulator:
         last_digit = program_code & 0xF
         if last_digit in self.programs_8:
             reg_num_1 = (program_code & 0xF00) >> 8
-            reg_num_2 = (program_code & 0xF0) >> 4
+            reg_num_2 = (program_code & 0x0F0) >> 4
             self.programs_8[last_digit](self, reg_num_1, reg_num_2)
             return True
         return False
 
+    # 9xy0
     def skip_if_regs_not_eq(self, reg_num_1, reg_num_2):
         if self.v_reg[reg_num_1] != self.v_reg[reg_num_2]:
             self.program_counter += 2
@@ -230,30 +277,37 @@ class CHIP8Emulator:
         if program_code & 0xF != 0:
             return False
         self.skip_if_regs_not_eq((program_code & 0xF00) >> 8,
-                                 (program_code & 0xF0) >> 4)
+                                 (program_code & 0x0F0) >> 4)
         return True
 
+    # Annn
     def set_i(self, value):
+        debug("I set to " + str(value))
         self.i_reg = value
 
     def execute_program_a(self, program_code):
         self.set_i(program_code & 0xFFF)
         return True
 
+    # Bnnn
     def jump_to_v0_sum(self, value):
         self.program_counter = value + self.v_reg[0] - 2
+        debug("pc = v0 + {:d} = {:d}".format(value, self.program_counter))
 
     def execute_program_b(self, program_code):
         self.jump_to_v0_sum(program_code & 0xFFF)
         return True
 
+    # Cxkk
     def set_rand_and(self, reg_num, value):
         self.v_reg[reg_num] = random.randint(0, 255) & value
 
     def execute_program_c(self, program_code):
-        self.set_rand_and((program_code & 0xF00) >> 8, program_code & 0xFF)
+        self.set_rand_and((program_code & 0xF00) >> 8,
+                          program_code & 0x0FF)
         return True
 
+    # Dxyn
     def draw_sprite(self, vx, vy, sprite_height):
         x = self.v_reg[vx]
         y = self.v_reg[vy]
@@ -261,24 +315,29 @@ class CHIP8Emulator:
         for i in range(sprite_height):
             line = self.memory[self.i_reg + i]
             dx = 0
-            while line > 0:
+            while line != 0:
                 if line & 0b10000000:
-                    collision = collision or self._switch_pixel(
-                        x + dx, y - i)
+                    collision = collision or \
+                                self._switch_pixel(x + dx, y + i)
                 line = (line << 1) & 0xff
                 dx += 1
         self.v_reg[0xf] = int(collision)
+        debug(
+            "drawing at ({:d},{:d}), height:{:d} collision: {}"
+                .format(x, y, sprite_height, str(collision)))
 
     def execute_program_d(self, program_code):
-        self.draw_sprite((program_code & 0xf00) >> 8,
-                         (program_code & 0xF0) >> 4,
-                         program_code & 0xF)
+        self.draw_sprite((program_code & 0xF00) >> 8,
+                         (program_code & 0x0F0) >> 4,
+                         program_code & 0x00F)
         return True
 
+    # Ex9E
     def skip_if_pressed(self, key):
         if self.key_down_values[key].value:
             self.program_counter += 2
 
+    # ExA1
     def skip_if_not_pressed(self, key):
         if not self.key_down_values[key].value:
             self.program_counter += 2
@@ -292,29 +351,40 @@ class CHIP8Emulator:
             return True
         return False
 
+    # Fx07
     def set_delay_timer_value_to_v(self, reg_num):
         with self.delay_timer_value.get_lock():
-            self.v_reg[reg_num] = self.delay_timer_value.value
+            self.v_reg[reg_num] = self.delay_timer_value.value & V_MAX
 
+    # Fx0A
     def wait_and_set_pressed_key(self, reg_num):
         self.key_press_event.clear()
         self.key_press_event.wait()
-        self.v_reg[reg_num] = self.key_press_value.value
+        self.v_reg[reg_num] = self.key_press_value.value & V_MAX
 
+    # Fx15
     def set_delay_timer(self, reg_num):
         with self.delay_timer_value.get_lock():
             self.delay_timer_value.value = self.v_reg[reg_num]
 
+    # Fx18
     def set_sound_timer(self, reg_num):
-        with self.sound_timer_value.get_lock():
-            self.sound_timer_value.value = self.v_reg[reg_num]
+        if self.v_reg[reg_num] != 1:
+            with self.sound_timer_value.get_lock():
+                self.sound_timer_value.value = self.v_reg[reg_num]
 
+    # Fx1E
     def add_vx_to_i(self, reg_num):
-        self.i_reg += self.v_reg[reg_num]
+        new_i = self.i_reg + self.v_reg[reg_num]
+        self.i_reg = new_i & I_MAX
+        self.v_reg[0xf] = int((new_i & (I_MAX + 1)) > 0)
 
+    # Fx29
     def set_i_to_digit_sprite(self, reg_num):
+        debug("Setting i to draw digit " + hex(self.v_reg[reg_num])[2:])
         self.i_reg = self.v_reg[reg_num] * 5
 
+    # Fx33
     def store_in_i_as_bcd(self, reg_num):
         value = self.v_reg[reg_num]
         hundreds = value % 1000 // 100
@@ -324,13 +394,17 @@ class CHIP8Emulator:
         self.memory[self.i_reg + 1] = tens
         self.memory[self.i_reg + 2] = ones
 
+    # Fx55
     def write_v_to_i(self, reg_end_num):
-        for i in range(reg_end_num):
+        for i in range(reg_end_num + 1):
             self.memory[self.i_reg + i] = self.v_reg[i]
+        self.i_reg = (self.i_reg + 1 + reg_end_num) & I_MAX
 
+    # Fx65
     def read_v_from_i(self, reg_end_num):
-        for i in range(reg_end_num):
+        for i in range(reg_end_num + 1):
             self.v_reg[i] = self.memory[self.i_reg + i]
+        self.i_reg = (self.i_reg + 1 + reg_end_num) & I_MAX
 
     programs_f = {0x07: set_delay_timer_value_to_v,
                   0x0A: wait_and_set_pressed_key,
