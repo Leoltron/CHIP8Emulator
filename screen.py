@@ -1,6 +1,8 @@
 # !/usr/bin/env python3
 from multiprocessing import Event, Value
 
+import sys
+
 PIXEL_SIDE_SIZE = 15
 from emulator import SCREEN_HEIGHT, SCREEN_WIDTH
 
@@ -110,7 +112,7 @@ class CHIP8ScreenApp(App):
                 self.pixels[x][y] = pixel
                 screen.add_widget(pixel)
 
-        Clock.schedule_interval(self.check_draw_queue, 1.0 / 200.0)
+        Clock.schedule_interval(self.check_draw_queue, 1.0 / 100.0)
         return screen
 
     def check_draw_queue(self, dt):

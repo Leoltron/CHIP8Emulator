@@ -93,7 +93,7 @@ class CHIP8Emulator:
     def execute(self):
         self.program_counter = PROGRAM_START
         while True:
-            time.sleep(0.005)
+            time.sleep(0.001)
             program_code = (self.memory[self.program_counter] << 8) | \
                            self.memory[self.program_counter + 1]
             self.execute_program(program_code)
@@ -307,24 +307,37 @@ class CHIP8Emulator:
                           program_code & 0x0FF)
         return True
 
+    log = dict()
+
     # Dxyn
     def draw_sprite(self, vx, vy, sprite_height):
         x = self.v_reg[vx]
         y = self.v_reg[vy]
+        if DEBUG:
+            if (x, y) in self.log and self.log[(x, y)] == self.i_reg:
+                print("Trying to draw the same sprite(?) in same position!")
+            self.log[(x, y)] = self.i_reg
         collision = False
         for i in range(sprite_height):
             line = self.memory[self.i_reg + i]
-            dx = 0
-            while line != 0:
-                if line & 0b10000000:
-                    collision = collision or \
-                                self._switch_pixel(x + dx, y + i)
-                line = (line << 1) & 0xff
-                dx += 1
+            dx = 7
+            while dx >= 0:
+                if line & 1:
+                    collision = self._switch_pixel(x + dx, y + i) or collision
+                line = line >> 1
+                dx -= 1
         self.v_reg[0xf] = int(collision)
         debug(
-            "drawing at ({:d},{:d}), height:{:d} collision: {}"
-                .format(x, y, sprite_height, str(collision)))
+            "drawing at ({:d},{:d}), height:{:d} collision: {}, i_reg: {:d}"
+                .format(x, y, sprite_height, str(collision), self.i_reg))
+        self.print_debug_sprite(sprite_height)
+
+    def print_debug_sprite(self, height):
+        if DEBUG:
+            for i in range(height):
+                line = bin(self.memory[self.i_reg + i])[2:] \
+                    .rjust(8, ' ').replace('0', ' ').replace('1', '#')
+                print('"' + line + '"')
 
     def execute_program_d(self, program_code):
         self.draw_sprite((program_code & 0xF00) >> 8,
@@ -333,14 +346,24 @@ class CHIP8Emulator:
         return True
 
     # Ex9E
-    def skip_if_pressed(self, key):
+    def skip_if_pressed(self, reg_num):
+        key = self.v_reg[reg_num]
+        # print("Checking if key "+hex(key)[2:].upper()+" is pressed... ",end='')
         if self.key_down_values[key].value:
             self.program_counter += 2
+        #     print("True")
+        # else:
+        #     print("False")
 
     # ExA1
-    def skip_if_not_pressed(self, key):
+    def skip_if_not_pressed(self, reg_num):
+        key = self.v_reg[reg_num]
+        # print("Checking if key "+hex(key)[2:].upper()+" is not pressed... ",end='')
         if not self.key_down_values[key].value:
             self.program_counter += 2
+        #     print("True")
+        # else:
+        #     print("False")
 
     programs_e = {0x9E: skip_if_pressed, 0xA1: skip_if_not_pressed}
 

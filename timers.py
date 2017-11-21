@@ -31,7 +31,7 @@ class TimerProcess(Process):
 
     def run(self):
         while True:
-            self.paused.wait(self.interval)
+            self.stopped.wait(self.interval)
             if not self.paused.is_set():
                 with self.timer_value.get_lock():
                     if self.timer_value.value > 0:

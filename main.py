@@ -3,6 +3,8 @@ import sys
 
 from multiprocessing import SimpleQueue
 
+import gc
+
 import emulator
 
 
@@ -20,7 +22,7 @@ def main():
     p.terminate()
     p.join()
 
-
 if __name__ == '__main__':
     from screen import CHIP8ScreenApp
+
     main()
