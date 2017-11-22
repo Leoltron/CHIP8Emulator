@@ -5,7 +5,7 @@ from multiprocessing import Value, Process
 import time
 
 import font
-from timers import TimerProcess, BeepTimerProcess
+from timers import TimerProcess
 
 SCREEN_WIDTH = 64
 SCREEN_HEIGHT = 32
@@ -25,24 +25,26 @@ def debug(*args, **kwargs):
 class EmulatorProcess(Process):
     def terminate(self):
         self.emulator.delay_timer.terminate()
-        self.emulator.sound_timer.terminate()
+        #self.emulator.sound_timer.terminate()
         super().terminate()
 
-    def __init__(self, draw_queue, key_press_event, key_press_value,
-                 key_down_values, program, *args, **kwargs):
+    def __init__(self, pixels_state, key_press_event, key_press_value,
+                 key_down_values, sound_timer_value,
+                 program, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.emulator = CHIP8Emulator(draw_queue,
+        self.emulator = CHIP8Emulator(pixels_state,
                                       key_press_event,
                                       key_press_value,
-                                      key_down_values)
+                                      key_down_values,
+                                      sound_timer_value)
         self.program = program
 
     def join(self, timeout=None):
         self.emulator.delay_timer.stopped.set()
         self.emulator.delay_timer.join(timeout)
 
-        self.emulator.sound_timer.stopped.set()
-        self.emulator.sound_timer.join(timeout)
+        #self.emulator.sound_timer.stopped.set()
+        #self.emulator.sound_timer.join(timeout)
 
         super().join(timeout)
 
@@ -53,8 +55,8 @@ class EmulatorProcess(Process):
 
 # noinspection SpellCheckingInspection
 class CHIP8Emulator:
-    def __init__(self, draw_queue, key_press_event, key_press_value,
-                 key_down_values):
+    def __init__(self, pixels_state, key_press_event, key_press_value,
+                 key_down_values, sound_timer_value):
         self.memory = bytearray(4096)
 
         for i in range(16):
@@ -70,11 +72,11 @@ class CHIP8Emulator:
         self.delay_timer = TimerProcess(1 / 60, self.delay_timer_value)
         self.delay_timer.start()
 
-        self.sound_timer_value = Value('i', 0)
-        self.sound_timer = BeepTimerProcess(1 / 60, self.sound_timer_value)
-        self.sound_timer.start()
+        self.sound_timer_value = sound_timer_value  # Value('i', 0)
+        # self.sound_timer = BeepTimerProcess(1 / 60, self.sound_timer_value)
+        # self.sound_timer.start()
 
-        self.draw_queue = draw_queue
+        self.pixels_state = pixels_state
         self.key_press_event = key_press_event
         self.key_press_value = key_press_value
         self.key_down_values = key_down_values
@@ -125,9 +127,9 @@ class CHIP8Emulator:
         while y >= SCREEN_HEIGHT:
             y -= SCREEN_HEIGHT
 
-        self.draw_queue.put((x, y))
         old_val = self.screen[x][y]
-        self.screen[x][y] = not old_val
+        self.pixels_state[x + SCREEN_WIDTH * y] = \
+            self.screen[x][y] = not old_val
         return old_val
 
     # 00EE
@@ -351,9 +353,9 @@ class CHIP8Emulator:
         # print("Checking if key "+hex(key)[2:].upper()+" is pressed... ",end='')
         if self.key_down_values[key].value:
             self.program_counter += 2
-        #     print("True")
-        # else:
-        #     print("False")
+            #     print("True")
+            # else:
+            #     print("False")
 
     # ExA1
     def skip_if_not_pressed(self, reg_num):
@@ -361,9 +363,9 @@ class CHIP8Emulator:
         # print("Checking if key "+hex(key)[2:].upper()+" is not pressed... ",end='')
         if not self.key_down_values[key].value:
             self.program_counter += 2
-        #     print("True")
-        # else:
-        #     print("False")
+            #     print("True")
+            # else:
+            #     print("False")
 
     programs_e = {0x9E: skip_if_pressed, 0xA1: skip_if_not_pressed}
 
