@@ -18,7 +18,7 @@ KEY_BINDINGS = {Qt.Key_1: 0x1, Qt.Key_2: 0x2, Qt.Key_3: 0x3, Qt.Key_4: 0xf,
                 Qt.Key_Z: 0xa, Qt.Key_X: 0x0, Qt.Key_C: 0xb, Qt.Key_V: 0xc, }
 
 
-class CHIP8Screen(QWidget):
+class CHIP8QScreen(QWidget):
     color_inactive = QColor(0, 0, 0)
     color_active = QColor(255, 255, 255)
 
@@ -27,9 +27,9 @@ class CHIP8Screen(QWidget):
 
         self.init_ui()
 
-        self.timer_sound = QBasicTimer()
-        self.sound_timer_value = Value('i', 0)
-        self.timer_sound.start(1000/60, self)
+        # self.timer_sound = QBasicTimer()
+        # self.sound_timer_value = Value('i', 0)
+        # self.timer_sound.start(1000/60, self)
 
         self.timer_redraw = QBasicTimer()
         self.timer_redraw.start(1, self)
@@ -48,14 +48,13 @@ class CHIP8Screen(QWidget):
 
         self.sound_playing = False
 
-
     def init_ui(self):
         self.setFixedSize(PIXEL_SIDE_SIZE * SCREEN_WIDTH,
                           PIXEL_SIDE_SIZE * SCREEN_HEIGHT)
         self.setWindowTitle('CHIP-8')
         self.show()
 
-    def paintEvent(self, e = None):
+    def paintEvent(self, e=None):
         qp = QPainter()
         qp.begin(self)
 
@@ -92,17 +91,18 @@ class CHIP8Screen(QWidget):
         qp.drawRect(x, y, PIXEL_SIDE_SIZE, PIXEL_SIDE_SIZE)
 
     def timerEvent(self, event):
-        if event.timerId() == self.timer_sound.timerId():
-            with self.sound_timer_value.get_lock():
-                if self.sound_timer_value.value > 0:
-                    self.sound_timer_value.value -= 1
-                    if not self.sound_playing and self.sound_timer_value.value > 0:
-                        self.sound_playing = True
-                        self.sound.play()
-                elif self.sound_playing:
-                    self.sound_playing = False
-                    self.sound.stop()
-        elif event.timerId() == self.timer_redraw.timerId():
+        # if event.timerId() == self.timer_sound.timerId():
+        #     with self.sound_timer_value.get_lock():
+        #         if self.sound_timer_value.value > 0:
+        #             self.sound_timer_value.value -= 1
+        #             if not self.sound_playing and self.sound_timer_value.value > 0:
+        #                 self.sound_playing = True
+        #                 self.sound.play()
+        #         elif self.sound_playing:
+        #             self.sound_playing = False
+        #             self.sound.stop()
+        # el
+        if event.timerId() == self.timer_redraw.timerId():
             self.update()
         else:
             super().timerEvent(event)
@@ -110,5 +110,5 @@ class CHIP8Screen(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    ex = CHIP8Screen()
+    ex = CHIP8QScreen()
     sys.exit(app.exec_())
