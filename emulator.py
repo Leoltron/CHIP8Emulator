@@ -25,24 +25,30 @@ def debug(*args, **kwargs):
 class EmulatorProcess(Process):
     def terminate(self):
         self.emulator.delay_timer.terminate()
-        self.emulator.sound_timer.terminate()
+        if self.use_sound:
+            self.emulator.sound_timer.terminate()
         super().terminate()
 
     def __init__(self, pixels_state, key_press_event, key_press_value,
-                 key_down_values, program, *args, **kwargs):
+                 key_down_values, use_delay, use_sound, program, *args,
+                 **kwargs):
         super().__init__(*args, **kwargs)
         self.emulator = CHIP8Emulator(pixels_state,
                                       key_press_event,
                                       key_press_value,
-                                      key_down_values)
+                                      key_down_values,
+                                      use_delay,
+                                      use_sound)
+        self.use_sound = use_sound
         self.program = program
 
     def join(self, timeout=None):
         self.emulator.delay_timer.stopped.set()
         self.emulator.delay_timer.join(timeout)
 
-        self.emulator.sound_timer.stopped.set()
-        self.emulator.sound_timer.join(timeout)
+        if self.use_sound:
+            self.emulator.sound_timer.stopped.set()
+            self.emulator.sound_timer.join(timeout)
 
         super().join(timeout)
 
@@ -54,8 +60,11 @@ class EmulatorProcess(Process):
 # noinspection SpellCheckingInspection
 class CHIP8Emulator:
     def __init__(self, pixels_state, key_press_event, key_press_value,
-                 key_down_values):
+                 key_down_values, use_delay=True, use_sound=True):
         self.memory = bytearray(4096)
+
+        self.use_delay = use_delay
+        self.use_sound = use_sound
 
         for i in range(16):
             self.memory[5 * i:5 * (i + 1)] = font.FONT[i]
@@ -71,8 +80,9 @@ class CHIP8Emulator:
         self.delay_timer.start()
 
         self.sound_timer_value = Value('i', 0)
-        self.sound_timer = BeepTimerProcess(1 / 60, self.sound_timer_value)
-        self.sound_timer.start()
+        if use_sound:
+            self.sound_timer = BeepTimerProcess(1 / 60, self.sound_timer_value)
+            self.sound_timer.start()
 
         self.pixels_state = pixels_state
         self.key_press_event = key_press_event
@@ -96,7 +106,8 @@ class CHIP8Emulator:
             program_code = (self.memory[self.program_counter] << 8) | \
                            self.memory[self.program_counter + 1]
             self.execute_program(program_code)
-            time.sleep(0.001)
+            if self.use_delay:
+                time.sleep(0.001)
 
     def execute_program(self, program_code, first_hex=None):
         if first_hex is None:
