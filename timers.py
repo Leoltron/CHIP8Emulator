@@ -46,6 +46,7 @@ class TimerProcess(Process):
 
 sound = None
 
+
 def stop_beeping():
     if sound:
         sound.stop()

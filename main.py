@@ -6,8 +6,8 @@ from PyQt5.QtWidgets import QApplication
 import emulator
 from screen import CHIP8QScreen
 
-def main():
 
+def main():
     app = QApplication(sys.argv[0:1])
     ex = CHIP8QScreen()
 
