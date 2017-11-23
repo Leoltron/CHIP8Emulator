@@ -1,73 +1,39 @@
 # !/usr/bin/env python3
-from multiprocessing import Event, Value
-
 import sys
+from multiprocessing import Array, Value, Event
 
-PIXEL_SIDE_SIZE = 15
+from PyQt5.QtCore import Qt, QBasicTimer
+from PyQt5.QtGui import QPainter, QColor
+from PyQt5.QtWidgets import QWidget, QApplication
+
 from emulator import SCREEN_HEIGHT, SCREEN_WIDTH
 
-from kivy.config import Config
+PIXEL_SIDE_SIZE = 15
 
-Config.set('graphics', 'resizable', '0')
-Config.set('graphics', 'width', str(PIXEL_SIDE_SIZE * SCREEN_WIDTH))
-Config.set('graphics', 'height', str(PIXEL_SIDE_SIZE * SCREEN_HEIGHT))
-
-from kivy.app import App
-from kivy.clock import Clock
-from kivy.uix.widget import Widget
-from kivy.core.window import Window
-from kivy.graphics.context_instructions import Color
-from kivy.graphics.vertex_instructions import Rectangle
+KEY_BINDINGS = {Qt.Key_1: 0x1, Qt.Key_2: 0x2, Qt.Key_3: 0x3, Qt.Key_4: 0xc,
+                Qt.Key_Q: 0x4, Qt.Key_W: 0x5, Qt.Key_E: 0x6, Qt.Key_R: 0xd,
+                Qt.Key_A: 0x7, Qt.Key_S: 0x8, Qt.Key_D: 0x9, Qt.Key_F: 0xe,
+                Qt.Key_Z: 0xa, Qt.Key_X: 0x0, Qt.Key_C: 0xb, Qt.Key_V: 0xf, }
 
 
-class Pixel(Widget):
-    active_color_rgb = [1, 1, 1]
-    inactive_color_rgb = [0, 0, 0]
-    side_size = PIXEL_SIDE_SIZE
+class CHIP8QScreen(QWidget):
+    color_inactive = QColor(0, 0, 0)
+    color_active = QColor(255, 255, 255)
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.active = False
-        self.update_color()
+    def __init__(self):
+        super().__init__()
 
-    def update_color(self):
-        self.color = self.active_color_rgb if self.active else self.inactive_color_rgb
-        with self.canvas:
-            Color(rgb=self.color)
-            Rectangle(size=self.size, pos=self.pos)
+        self.init_ui()
 
-    def set_active(self, new_val=True):
-        old_val = self.active
-        self.active = new_val
-        if old_val ^ new_val:
-            self.update_color()
+        # self.timer_sound = QBasicTimer()
+        # self.sound_timer_value = Value('i', 0)
+        # self.timer_sound.start(1000/60, self)
 
-    def switch_active(self):
-        # print("Switching x:{:d} y:{:d} ({})".format(self.x, self.y,
-        #                                             str(self.size)))
-        self.active = not self.active
-        self.update_color()
-        return self.active
+        self.timer_redraw = QBasicTimer()
+        self.timer_redraw.start(1, self)
 
-
-class CHIP8Screen(Widget):
-    pass
-
-
-KEY_BINDINGS = {'1': 0x1, '2': 0x2, '3': 0x3, '4': 0xf,
-                'q': 0x4, 'w': 0x5, 'e': 0x6, 'r': 0xe,
-                'a': 0x7, 's': 0x8, 'd': 0x9, 'f': 0xd,
-                'z': 0xa, 'x': 0x0, 'c': 0xb, 'v': 0xc, }
-
-
-class CHIP8ScreenApp(App):
-    pixels = []
-
-    def __init__(self, draw_queue, **kwargs):
-        super().__init__(**kwargs)
-
-        self.draw_queue = draw_queue
-
+        self.pixels_state = Array('b',
+                                  [False] * (SCREEN_WIDTH * SCREEN_HEIGHT))
         self.pressed_event = Event()
         self.pressed_key = Value('i', 0)
 
@@ -75,57 +41,72 @@ class CHIP8ScreenApp(App):
         for i in range(0x10):
             self.pressed.append(Value('b', False))
 
-        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
-        self._keyboard.bind(on_key_down=self._on_keyboard_down)
-        self._keyboard.bind(on_key_up=self._on_keyboard_up)
+            # self.sound = QSound("beep.wav")
+            # self.sound.setLoops(-1)
+            #
+            # self.sound_playing = False
 
-    def _keyboard_closed(self):
-        self._keyboard.unbind(on_key_down=self._on_keyboard_down)
-        self._keyboard.unbind(on_key_up=self._on_keyboard_up)
-        self._keyboard = None
+    def init_ui(self):
+        self.setFixedSize(PIXEL_SIDE_SIZE * SCREEN_WIDTH,
+                          PIXEL_SIDE_SIZE * SCREEN_HEIGHT)
+        self.setWindowTitle('CHIP-8')
+        self.show()
 
-    def _on_keyboard_down(self, keyboard, key_code, text, modifiers):
-        key_name = key_code[1]
-        if key_name in KEY_BINDINGS:
-            key = KEY_BINDINGS[key_name]
-            self.pressed[key].value = True
-            self._on_key_pressed(key)
-        return True
+    def paintEvent(self, e=None):
+        qp = QPainter()
+        qp.begin(self)
 
-    def _on_keyboard_up(self, keyboard, key_code):
-        key_name = key_code[1]
-        if key_name in KEY_BINDINGS:
-            self.pressed[KEY_BINDINGS[key_name]].value = False
-        return True
-
-    def build(self):
-        screen = CHIP8Screen()
-        self.pixels = []
-        for x in range(SCREEN_WIDTH):
-            self.pixels.append([None] * SCREEN_HEIGHT)
-
+        index = 0
         for y in range(SCREEN_HEIGHT):
             for x in range(SCREEN_WIDTH):
-                pixel = Pixel(pos=(
-                    x * PIXEL_SIDE_SIZE,
-                    (SCREEN_HEIGHT - y - 1) * PIXEL_SIDE_SIZE))
-                self.pixels[x][y] = pixel
-                screen.add_widget(pixel)
+                self.draw_pixel(qp,
+                                x * PIXEL_SIDE_SIZE,
+                                y * PIXEL_SIDE_SIZE,
+                                self.pixels_state[index])
+                index += 1
+        qp.end()
 
-        Clock.schedule_interval(self.check_draw_queue, 1.0 / 100.0)
-        return screen
+    def keyPressEvent(self, e):
+        if e.isAutoRepeat():
+            return
+        if e.key() in KEY_BINDINGS:
+            key = KEY_BINDINGS[e.key()]
+            self.pressed[key].value = True
+            if not self.pressed_event.is_set():
+                self.pressed_key.value = key
+                self.pressed_event.set()
 
-    def check_draw_queue(self, dt):
-        while not self.draw_queue.empty():
-            self.switch_pixel(*self.draw_queue.get())
+    def keyReleaseEvent(self, e):
+        if e.isAutoRepeat():
+            return
+        if e.key() in KEY_BINDINGS:
+            self.pressed[KEY_BINDINGS[e.key()]].value = False
 
-    def switch_pixel(self, x, y):
-        return self.pixels[x][y].switch_active()
+    def draw_pixel(self, qp, x, y, state):
+        color = self.color_active if state else self.color_inactive
+        qp.setBrush(color)
+        qp.setPen(color)
+        qp.drawRect(x, y, PIXEL_SIDE_SIZE, PIXEL_SIDE_SIZE)
 
-    def is_key_pressed(self, key):
-        return self.pressed[key]
+    def timerEvent(self, event):
+        # if event.timerId() == self.timer_sound.timerId():
+        #     with self.sound_timer_value.get_lock():
+        #         if self.sound_timer_value.value > 0:
+        #             self.sound_timer_value.value -= 1
+        #             if not self.sound_playing and self.sound_timer_value.value > 0:
+        #                 self.sound_playing = True
+        #                 self.sound.play()
+        #         elif self.sound_playing:
+        #             self.sound_playing = False
+        #             self.sound.stop()
+        # el
+        if event.timerId() == self.timer_redraw.timerId():
+            self.update()
+        else:
+            super().timerEvent(event)
 
-    def _on_key_pressed(self, key):
-        if not self.pressed_event.is_set():
-            self.pressed_key.value = key
-            self.pressed_event.set()
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    ex = CHIP8QScreen()
+    sys.exit(app.exec_())
