@@ -434,13 +434,11 @@ class CHIP8Emulator:
     def write_v_to_i(self, reg_end_num):
         for i in range(reg_end_num + 1):
             self.memory[self.i_reg + i] = self.v_reg[i]
-        self.i_reg = (self.i_reg + 1 + reg_end_num) & I_MAX
 
     # Fx65
     def read_v_from_i(self, reg_end_num):
         for i in range(reg_end_num + 1):
             self.v_reg[i] = self.memory[self.i_reg + i]
-        self.i_reg = (self.i_reg + 1 + reg_end_num) & I_MAX
 
     programs_f = {0x07: set_delay_timer_value_to_v,
                   0x0A: wait_and_set_pressed_key,
