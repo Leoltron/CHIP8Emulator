@@ -42,36 +42,3 @@ class TimerProcess(Process):
 
     def resume(self):
         self.paused.clear()
-
-
-sound = None
-
-
-def stop_beeping():
-    if sound:
-        sound.stop()
-
-
-def start_beeping():
-    if sound:
-        sound.loop = True
-        sound.play()
-
-
-class BeepTimerProcess(TimerProcess):
-    def __init__(self, interval, timer_value: Value, *args, **kwargs):
-        global sound
-        super().__init__(interval, timer_value, *args, **kwargs)
-        if not sound:
-            from kivy.core.audio import SoundLoader
-            sound = SoundLoader.load('beep.wav')
-
-    def pause(self):
-        if not self.paused.is_set():
-            stop_beeping()
-        super().pause()
-
-    def resume(self):
-        if self.paused.is_set():
-            start_beeping()
-        super().resume()

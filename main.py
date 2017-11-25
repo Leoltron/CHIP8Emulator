@@ -1,6 +1,7 @@
 # !/usr/bin/env python3
 import sys
 
+import os
 from PyQt5.QtWidgets import QApplication
 
 import emulator
@@ -23,7 +24,15 @@ def main():
         args.remove("--no-sound")
         use_sound = False
 
-    with open(' '.join(args), 'rb') as f:
+    file_path = ' '.join(args)
+    if len(args) == 0:
+        print("Usage: " + sys.argv[0] + " <program_path> "
+                                        "[--no-sound] [--no-delay]")
+        return
+    elif not os.path.isfile(file_path):
+        print("File " + file_path + " not found")
+        return
+    with open(file_path, 'rb') as f:
         program = f.read()
 
     p = emulator.EmulatorProcess(ex.pixels_state,

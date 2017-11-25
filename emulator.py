@@ -5,7 +5,7 @@ from multiprocessing import Value, Process
 import time
 
 import font
-from timers import TimerProcess, BeepTimerProcess
+import timer
 
 SCREEN_WIDTH = 64
 SCREEN_HEIGHT = 32
@@ -76,12 +76,14 @@ class CHIP8Emulator:
         self.stack = [0] * 16
 
         self.delay_timer_value = Value('i', 0)
-        self.delay_timer = TimerProcess(1 / 60, self.delay_timer_value)
+        self.delay_timer = timer.TimerProcess(1 / 60, self.delay_timer_value)
         self.delay_timer.start()
 
         self.sound_timer_value = Value('i', 0)
         if use_sound:
-            self.sound_timer = BeepTimerProcess(1 / 60, self.sound_timer_value)
+            import sound_timer
+            self.sound_timer = sound_timer.BeepTimerProcess(1 / 60,
+                                                            self.sound_timer_value)
             self.sound_timer.start()
 
         self.pixels_state = pixels_state
