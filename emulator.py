@@ -107,7 +107,12 @@ class CHIP8Emulator:
         while True:
             program_code = (self.memory[self.program_counter] << 8) | \
                            self.memory[self.program_counter + 1]
-            self.execute_program(program_code)
+            try:
+                self.execute_program(program_code)
+            except ValueError:
+                print('Not found program matching ' + hex(program_code)[
+                                                      2:].upper())
+                return
             if self.use_delay:
                 time.sleep(0.001)
 
@@ -239,7 +244,7 @@ class CHIP8Emulator:
     # 8xy4
     def sum_regs(self, reg_num_1, reg_num_2):
         result = self.v_reg[reg_num_1] + self.v_reg[reg_num_2]
-        self.v_reg[0xF] = result & (V_MAX + 1)
+        self.v_reg[0xF] = int(result & (V_MAX + 1) > 0)
         self.v_reg[reg_num_1] = result & V_MAX
 
     # 8xy5
