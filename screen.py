@@ -8,8 +8,6 @@ from PyQt5.QtWidgets import QWidget, QApplication
 
 from emulator import SCREEN_HEIGHT, SCREEN_WIDTH
 
-PIXEL_SIDE_SIZE = 15
-
 KEY_BINDINGS = {Qt.Key_1: 0x1, Qt.Key_2: 0x2, Qt.Key_3: 0x3, Qt.Key_4: 0xc,
                 Qt.Key_Q: 0x4, Qt.Key_W: 0x5, Qt.Key_E: 0x6, Qt.Key_R: 0xd,
                 Qt.Key_A: 0x7, Qt.Key_S: 0x8, Qt.Key_D: 0x9, Qt.Key_F: 0xe,
@@ -20,14 +18,12 @@ class CHIP8QScreen(QWidget):
     color_inactive = QColor(0, 0, 0)
     color_active = QColor(255, 255, 255)
 
-    def __init__(self):
+    def __init__(self, pixel_side_size):
         super().__init__()
 
+        self.pixel_side_size = pixel_side_size
+        
         self.init_ui()
-
-        # self.timer_sound = QBasicTimer()
-        # self.sound_timer_value = Value('i', 0)
-        # self.timer_sound.start(1000/60, self)
 
         self.timer_redraw = QBasicTimer()
         self.timer_redraw.start(1, self)
@@ -37,18 +33,15 @@ class CHIP8QScreen(QWidget):
         self.pressed_event = Event()
         self.pressed_key = Value('i', 0)
 
+        self.close_event = Event()
+
         self.pressed = []
         for i in range(0x10):
             self.pressed.append(Value('b', False))
 
-            # self.sound = QSound("beep.wav")
-            # self.sound.setLoops(-1)
-            #
-            # self.sound_playing = False
-
     def init_ui(self):
-        self.setFixedSize(PIXEL_SIDE_SIZE * SCREEN_WIDTH,
-                          PIXEL_SIDE_SIZE * SCREEN_HEIGHT)
+        self.setFixedSize(self.pixel_side_size * SCREEN_WIDTH,
+                          self.pixel_side_size * SCREEN_HEIGHT)
         self.setWindowTitle('CHIP-8')
         self.show()
 
@@ -60,8 +53,8 @@ class CHIP8QScreen(QWidget):
         for y in range(SCREEN_HEIGHT):
             for x in range(SCREEN_WIDTH):
                 self.draw_pixel(qp,
-                                x * PIXEL_SIDE_SIZE,
-                                y * PIXEL_SIDE_SIZE,
+                                x * self.pixel_side_size,
+                                y * self.pixel_side_size,
                                 self.pixels_state[index])
                 index += 1
         qp.end()
@@ -86,20 +79,11 @@ class CHIP8QScreen(QWidget):
         color = self.color_active if state else self.color_inactive
         qp.setBrush(color)
         qp.setPen(color)
-        qp.drawRect(x, y, PIXEL_SIDE_SIZE, PIXEL_SIDE_SIZE)
+        qp.drawRect(x, y, self.pixel_side_size, self.pixel_side_size)
 
     def timerEvent(self, event):
-        # if event.timerId() == self.timer_sound.timerId():
-        #     with self.sound_timer_value.get_lock():
-        #         if self.sound_timer_value.value > 0:
-        #             self.sound_timer_value.value -= 1
-        #             if not self.sound_playing and self.sound_timer_value.value > 0:
-        #                 self.sound_playing = True
-        #                 self.sound.play()
-        #         elif self.sound_playing:
-        #             self.sound_playing = False
-        #             self.sound.stop()
-        # el
+        if self.close_event.is_set():
+            self.close()
         if event.timerId() == self.timer_redraw.timerId():
             self.update()
         else:

@@ -119,6 +119,27 @@ class EmulatorTests(unittest.TestCase):
                                      bin(expected)[2:].rjust(8, '0'),
                                      bin(actual)[2:].rjust(8, '0')))
 
+    def test_set_reg_or(self):
+        e = self.emulator
+        e.v_reg[0] = 0b0101
+        e.v_reg[1] = 0b0011
+        e.execute_program(0x8011)
+        self.assertEqual(e.v_reg[0], 0b0111)
+
+    def test_set_reg_and(self):
+        e = self.emulator
+        e.v_reg[0] = 0b0101
+        e.v_reg[1] = 0b0011
+        e.execute_program(0x8012)
+        self.assertEqual(e.v_reg[0], 0b0001)
+
+    def test_set_reg_xor(self):
+        e = self.emulator
+        e.v_reg[0] = 0b0101
+        e.v_reg[1] = 0b0011
+        e.execute_program(0x8013)
+        self.assertEqual(e.v_reg[0], 0b0110)
+
     def test_v_add(self):
         e = self.emulator
         e.set(0, 1)

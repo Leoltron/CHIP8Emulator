@@ -5,6 +5,7 @@ from kivy.core.audio import SoundLoader
 from timer import TimerProcess
 
 sound = SoundLoader.load('beep.wav')
+sound.loop = True
 
 
 def stop_beeping():

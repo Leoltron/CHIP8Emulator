@@ -24,19 +24,19 @@ def debug(*args, **kwargs):
 
 class EmulatorProcess(Process):
     def terminate(self):
-        self.emulator.delay_timer.terminate()
-        if self.use_sound:
-            self.emulator.sound_timer.terminate()
+        self.emulator.on_terminate()
         super().terminate()
 
     def __init__(self, pixels_state, key_press_event, key_press_value,
-                 key_down_values, use_delay, use_sound, program, *args,
+                 key_down_values, close_event,
+                 use_delay=True, use_sound=True, program=None, *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.emulator = CHIP8Emulator(pixels_state,
                                       key_press_event,
                                       key_press_value,
                                       key_down_values,
+                                      close_event,
                                       use_delay,
                                       use_sound)
         self.use_sound = use_sound
@@ -60,11 +60,12 @@ class EmulatorProcess(Process):
 # noinspection SpellCheckingInspection
 class CHIP8Emulator:
     def __init__(self, pixels_state, key_press_event, key_press_value,
-                 key_down_values, use_delay=True, use_sound=True):
+                 key_down_values, close_event, use_delay=True, use_sound=True):
         self.memory = bytearray(4096)
 
         self.use_delay = use_delay
         self.use_sound = use_sound
+        self.close_event = close_event
 
         for i in range(16):
             self.memory[5 * i:5 * (i + 1)] = font.FONT[i]
@@ -109,9 +110,14 @@ class CHIP8Emulator:
                            self.memory[self.program_counter + 1]
             try:
                 self.execute_program(program_code)
-            except ValueError:
-                print('Not found program matching ' + hex(program_code)[
-                                                      2:].upper())
+            except OpCodeNotFoundError:
+                print(
+                    "Error at memory position {0} ({1} from program start): ".format(
+                        hex(self.program_counter),
+                        hex(self.program_counter - PROGRAM_START)), end='')
+                readable_code = hex(program_code)[2:].zfill(4).upper()
+                print('Not found program matching ' + readable_code)
+                self.close_event.set()
                 return
             if self.use_delay:
                 time.sleep(0.001)
@@ -121,7 +127,7 @@ class CHIP8Emulator:
             first_hex = (program_code >> 12) & 0xf
 
         if not self.programs_by_first_digit[first_hex](self, program_code):
-            raise ValueError(
+            raise OpCodeNotFoundError(
                 'Not found program matching ' + hex(program_code)[2:].upper())
         self.program_counter += 2
 
@@ -366,22 +372,14 @@ class CHIP8Emulator:
     # Ex9E
     def skip_if_pressed(self, reg_num):
         key = self.v_reg[reg_num]
-        # print("Checking if key "+hex(key)[2:].upper()+" is pressed... ",end='')
         if self.key_down_values[key].value:
             self.program_counter += 2
-            #     print("True")
-            # else:
-            #     print("False")
 
     # ExA1
     def skip_if_not_pressed(self, reg_num):
         key = self.v_reg[reg_num]
-        # print("Checking if key "+hex(key)[2:].upper()+" is not pressed... ",end='')
         if not self.key_down_values[key].value:
             self.program_counter += 2
-            #     print("True")
-            # else:
-            #     print("False")
 
     programs_e = {0x9E: skip_if_pressed, 0xA1: skip_if_not_pressed}
 
@@ -478,3 +476,12 @@ class CHIP8Emulator:
                                execute_program_d,
                                execute_program_e,
                                execute_program_f]
+
+    def on_terminate(self):
+        self.delay_timer.terminate()
+        if self.use_sound:
+            self.sound_timer.terminate()
+
+
+class OpCodeNotFoundError(Exception):
+    pass
