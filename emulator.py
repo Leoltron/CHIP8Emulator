@@ -14,13 +14,6 @@ PROGRAM_START = 0x200
 V_MAX = 0xFF
 I_MAX = 0xFFFF
 
-DEBUG = False
-
-
-def debug(*args, **kwargs):
-    if DEBUG:
-        print(*args, **kwargs)
-
 
 class EmulatorProcess(Process):
     def terminate(self):
@@ -133,7 +126,6 @@ class CHIP8Emulator:
 
     # 00E0
     def clear_screen(self):
-        debug("Clearing screen...")
         for x in range(SCREEN_WIDTH):
             for y in range(SCREEN_HEIGHT):
                 if self.screen[x][y]:
@@ -306,7 +298,6 @@ class CHIP8Emulator:
 
     # Annn
     def set_i(self, value):
-        debug("I set to " + str(value))
         self.i_reg = value
 
     def execute_program_a(self, program_code):
@@ -316,7 +307,6 @@ class CHIP8Emulator:
     # Bnnn
     def jump_to_v0_sum(self, value):
         self.program_counter = value + self.v_reg[0] - 2
-        debug("pc = v0 + {:d} = {:d}".format(value, self.program_counter))
 
     def execute_program_b(self, program_code):
         self.jump_to_v0_sum(program_code & 0xFFF)
@@ -331,16 +321,10 @@ class CHIP8Emulator:
                           program_code & 0x0FF)
         return True
 
-    log = dict()
-
     # Dxyn
     def draw_sprite(self, vx, vy, sprite_height):
         x = self.v_reg[vx]
         y = self.v_reg[vy]
-        if DEBUG:
-            if (x, y) in self.log and self.log[(x, y)] == self.i_reg:
-                print("Trying to draw the same sprite(?) in same position!")
-            self.log[(x, y)] = self.i_reg
         collision = False
         for i in range(sprite_height):
             line = self.memory[self.i_reg + i]
@@ -351,17 +335,6 @@ class CHIP8Emulator:
                 line = line >> 1
                 dx -= 1
         self.v_reg[0xf] = int(collision)
-        debug(
-            "drawing at ({:d},{:d}), height:{:d} collision: {}, i_reg: {:d}"
-                .format(x, y, sprite_height, str(collision), self.i_reg))
-        self.print_debug_sprite(sprite_height)
-
-    def print_debug_sprite(self, height):
-        if DEBUG:
-            for i in range(height):
-                line = bin(self.memory[self.i_reg + i])[2:] \
-                    .rjust(8, ' ').replace('0', ' ').replace('1', '#')
-                print('"' + line + '"')
 
     def execute_program_d(self, program_code):
         self.draw_sprite((program_code & 0xF00) >> 8,
@@ -420,7 +393,6 @@ class CHIP8Emulator:
 
     # Fx29
     def set_i_to_digit_sprite(self, reg_num):
-        debug("Setting i to draw digit " + hex(self.v_reg[reg_num])[2:])
         self.i_reg = self.v_reg[reg_num] * 5
 
     # Fx33

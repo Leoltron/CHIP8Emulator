@@ -1,4 +1,5 @@
 # !/usr/bin/env python3
+import random
 import unittest
 
 from multiprocessing import Array, Event, Value
@@ -21,6 +22,7 @@ class EmulatorTests(unittest.TestCase):
                                       self.key_press_event,
                                       self.key_press_value,
                                       self.key_down_values,
+                                      Event(),
                                       False, False)
 
     def tearDown(self):
@@ -300,3 +302,137 @@ class EmulatorTests(unittest.TestCase):
         self.assertEqual(e.v_reg[3], 5)
         self.assertEqual(e.v_reg[4], 123)
         self.assertEqual(e.v_reg[5], 88)
+
+    def test_clear_screen(self):
+        e = self.emulator
+        for x in range(SCREEN_WIDTH):
+            for y in range(SCREEN_HEIGHT):
+                e.screen[x][y] = random.choice([True, False])
+        e.execute_program(0x00E0)
+
+        for x in range(SCREEN_WIDTH):
+            for y in range(SCREEN_HEIGHT):
+                self.assertEqual(e.screen[x][y], False)
+
+    def test_skip_if_pressed(self):
+        e = self.emulator
+        e.v_reg[5] = 8
+        with e.key_down_values[8].get_lock():
+            e.key_down_values[8].value = True
+        e.program_counter = 0x205
+        e.execute_program(0xE59E)
+        self.assertEqual(e.program_counter, 0x209)
+
+    def test_not_skip_if_not_pressed(self):
+        e = self.emulator
+        e.v_reg[5] = 8
+        with e.key_down_values[8].get_lock():
+            e.key_down_values[8].value = False
+        e.program_counter = 0x205
+        e.execute_program(0xE59E)
+        self.assertEqual(e.program_counter, 0x207)
+
+    def test_skip_if_not_pressed(self):
+        e = self.emulator
+        e.v_reg[5] = 8
+        with e.key_down_values[8].get_lock():
+            e.key_down_values[8].value = False
+        e.program_counter = 0x205
+        e.execute_program(0xE5A1)
+        self.assertEqual(e.program_counter, 0x209)
+
+    def test_not_skip_if_pressed(self):
+        e = self.emulator
+        e.v_reg[5] = 8
+        with e.key_down_values[8].get_lock():
+            e.key_down_values[8].value = True
+        e.program_counter = 0x205
+        e.execute_program(0xE5A1)
+        self.assertEqual(e.program_counter, 0x207)
+
+    def test_draw_sprite(self):
+        e = self.emulator
+        e.memory[0x200] = 0b11100000
+        e.memory[0x201] = 0b11100000
+        e.memory[0x202] = 0b11100000
+        e.i_reg = 0x200
+
+        start_x = 0
+        start_y = 0
+
+        e.v_reg[0] = start_x
+        e.v_reg[1] = start_y
+
+        e.execute_program(0xD013)
+
+        for x in range(3):
+            for y in range(3):
+                self.assertEqual(e.screen[start_x + x][start_y + y], True)
+        self.assertEqual(e.v_reg[0xF], 0)
+
+    def test_draw_sprite_collision(self):
+        e = self.emulator
+        e.memory[0x200] = 0b11100000
+        e.memory[0x201] = 0b11100000
+        e.memory[0x202] = 0b11100000
+        e.i_reg = 0x200
+
+        start_x = 0
+        start_y = 0
+
+        e.v_reg[0] = start_x
+        e.v_reg[1] = start_y
+
+        e.screen[1][1] = True
+
+        e.execute_program(0xD013)
+
+        for x in range(3):
+            for y in range(3):
+                self.assertEqual(e.screen[start_x + x][start_y + y],
+                                 x != 1 or y != 1)
+        self.assertEqual(e.v_reg[0xF], 1)
+
+    def test_draw_sprite_out_of_minus(self):
+        e = self.emulator
+        e.memory[0x200] = 0b11100000
+        e.memory[0x201] = 0b11100000
+        e.memory[0x202] = 0b11100000
+        e.i_reg = 0x200
+
+        start_x = -1
+        start_y = -1
+
+        e.v_reg[0] = start_x
+        e.v_reg[1] = start_y
+
+        e.execute_program(0xD013)
+
+        for x in range(3):
+            for y in range(3):
+                self.assertEqual(
+                    e.screen[(start_x + x + SCREEN_WIDTH) % SCREEN_WIDTH][
+                        (start_y + y + SCREEN_HEIGHT) % SCREEN_HEIGHT], True)
+        self.assertEqual(e.v_reg[0xF], 0)
+
+    def test_draw_sprite_out_of_bounds_plus(self):
+        e = self.emulator
+        e.memory[0x200] = 0b11100000
+        e.memory[0x201] = 0b11100000
+        e.memory[0x202] = 0b11100000
+        e.i_reg = 0x200
+
+        start_x = SCREEN_WIDTH - 1
+        start_y = SCREEN_HEIGHT - 1
+
+        e.v_reg[0] = start_x
+        e.v_reg[1] = start_y
+
+        e.execute_program(0xD013)
+
+        for x in range(3):
+            for y in range(3):
+                self.assertEqual(
+                    e.screen[(start_x + x + SCREEN_WIDTH) % SCREEN_WIDTH][
+                        (start_y + y + SCREEN_HEIGHT) % SCREEN_HEIGHT], True)
+        self.assertEqual(e.v_reg[0xF], 0)
