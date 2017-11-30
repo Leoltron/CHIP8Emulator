@@ -50,6 +50,10 @@ class EmulatorProcess(Process):
         self.emulator.execute()
 
 
+def hex_and_dec(value):
+    return hex(value) + ' (' + str(value) + ')'
+
+
 # noinspection SpellCheckingInspection
 class CHIP8Emulator:
     def __init__(self, pixels_state, key_press_event, key_press_value,
@@ -105,9 +109,11 @@ class CHIP8Emulator:
                 self.execute_program(program_code)
             except OpCodeNotFoundError:
                 print(
-                    "Error at memory position {0} ({1} from program start): ".format(
-                        hex(self.program_counter),
-                        hex(self.program_counter - PROGRAM_START)), end='')
+                    "Error at memory position {0} "
+                    "({1} bytes from program start): ".format(
+                        hex_and_dec(self.program_counter),
+                        hex_and_dec(self.program_counter - PROGRAM_START)),
+                    end='')
                 readable_code = hex(program_code)[2:].zfill(4).upper()
                 print('Not found program matching ' + readable_code)
                 self.close_event.set()
