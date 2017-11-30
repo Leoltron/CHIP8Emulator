@@ -436,3 +436,14 @@ class EmulatorTests(unittest.TestCase):
                     e.screen[(start_x + x + SCREEN_WIDTH) % SCREEN_WIDTH][
                         (start_y + y + SCREEN_HEIGHT) % SCREEN_HEIGHT], True)
         self.assertEqual(e.v_reg[0xF], 0)
+
+    # 6150 - v[1] = 0x50
+    # 621F - v[2] = 0x1F
+    # 7211 - add 0x11 to v[2], v[2] == 0x30
+    # 8124 - add v[2] to v[1], v[1] == 0x80, v[2] == 0x30
+    def test_execute(self):
+        self.emulator.load_program(b'\x61\x50\x62\x1F\x72\x11\x81\x24')
+        self.emulator.execute()
+        self.assertEqual(self.emulator.v_reg[1], 0x80)
+        self.assertEqual(self.emulator.v_reg[2], 0x30)
+        self.assertEqual(self.emulator.v_reg[0xf], 0)
