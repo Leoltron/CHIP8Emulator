@@ -22,7 +22,7 @@ class CHIP8QScreen(QWidget):
         super().__init__()
 
         self.pixel_side_size = pixel_side_size
-        
+
         self.init_ui()
 
         self.timer_redraw = QBasicTimer()
@@ -83,14 +83,8 @@ class CHIP8QScreen(QWidget):
 
     def timerEvent(self, event):
         if self.close_event.is_set():
-            self.close()
+            QApplication.quit()
         if event.timerId() == self.timer_redraw.timerId():
             self.update()
         else:
             super().timerEvent(event)
-
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    ex = CHIP8QScreen()
-    sys.exit(app.exec_())
