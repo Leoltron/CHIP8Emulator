@@ -130,7 +130,7 @@ class CHIP8Emulator:
         if not self.programs_by_first_digit[first_hex](self, program_code):
             raise OpCodeNotFoundError(
                 'Not found program matching ' + hex(program_code)[2:].upper())
-        self.program_counter += 2
+        self.program_counter = (self.program_counter + 2) & 0xFFF
 
     # 00E0
     def clear_screen(self):
@@ -335,7 +335,7 @@ class CHIP8Emulator:
         y = self.v_reg[vy]
         collision = False
         for i in range(sprite_height):
-            line = self.memory[self.i_reg + i]
+            line = self.memory[(self.i_reg + i) & 0xFFF]
             dx = 7
             while dx >= 0:
                 if line & 1:
@@ -416,12 +416,12 @@ class CHIP8Emulator:
     # Fx55
     def write_v_to_i(self, reg_end_num):
         for i in range(reg_end_num + 1):
-            self.memory[self.i_reg + i] = self.v_reg[i]
+            self.memory[(self.i_reg + i) & 0xFFF] = self.v_reg[i]
 
     # Fx65
     def read_v_from_i(self, reg_end_num):
         for i in range(reg_end_num + 1):
-            self.v_reg[i] = self.memory[self.i_reg + i]
+            self.v_reg[i] = self.memory[(self.i_reg + i) & 0xFFF]
 
     programs_f = {0x07: set_delay_timer_value_to_v,
                   0x0A: wait_and_set_pressed_key,

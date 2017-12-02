@@ -8,7 +8,7 @@ import time
 
 import font
 from emulator import CHIP8Emulator, SCREEN_WIDTH, SCREEN_HEIGHT, \
-    OpCodeNotFoundError
+    OpCodeNotFoundError, EmulatorError
 
 
 class EmulatorTests(unittest.TestCase):
@@ -256,6 +256,11 @@ class EmulatorTests(unittest.TestCase):
         e.execute_program(0xB123)
         self.assertEqual(e.program_counter, 0x135)
 
+    def test_jump_to_v0_sum_out_of_memory_bounds(self):
+        self.emulator.v_reg[0] = 0xFF
+        self.emulator.execute_program(0xBFFF)
+        self.assertEqual(self.emulator.program_counter, 0xfe)
+
     def test_add_vx_to_i(self):
         e = self.emulator
         e.i_reg = 0x565
@@ -268,6 +273,7 @@ class EmulatorTests(unittest.TestCase):
         e.i_reg = 0xFFAA
         e.v_reg[5] = 0x58
         e.execute_program(0xF51E)
+
         self.assertEqual(e.i_reg, 0x2)
 
     def test_store_in_i_as_bcd(self):
@@ -296,6 +302,23 @@ class EmulatorTests(unittest.TestCase):
         self.assertEqual(e.memory[e.i_reg + 4], 123)
         self.assertEqual(e.memory[e.i_reg + 5], 88)
 
+    def test_write_v_to_i_out(self):
+        e = self.emulator
+        e.v_reg[0] = 8
+        e.v_reg[1] = 99
+        e.v_reg[2] = 3
+        e.v_reg[3] = 5
+        e.v_reg[4] = 123
+        e.v_reg[5] = 88
+        e.i_reg = 0xFFF
+        e.execute_program(0xF555)
+        self.assertEqual(e.memory[e.i_reg], 8)
+        self.assertEqual(e.memory[0], 99)
+        self.assertEqual(e.memory[1], 3)
+        self.assertEqual(e.memory[2], 5)
+        self.assertEqual(e.memory[3], 123)
+        self.assertEqual(e.memory[4], 88)
+
     def test_read_v_from_i(self):
         e = self.emulator
         e.i_reg = 0x300
@@ -305,6 +328,23 @@ class EmulatorTests(unittest.TestCase):
         e.memory[e.i_reg + 3] = 5
         e.memory[e.i_reg + 4] = 123
         e.memory[e.i_reg + 5] = 88
+        e.execute_program(0xF565)
+        self.assertEqual(e.v_reg[0], 8)
+        self.assertEqual(e.v_reg[1], 99)
+        self.assertEqual(e.v_reg[2], 3)
+        self.assertEqual(e.v_reg[3], 5)
+        self.assertEqual(e.v_reg[4], 123)
+        self.assertEqual(e.v_reg[5], 88)
+
+    def test_read_v_from_i_out(self):
+        e = self.emulator
+        e.i_reg = 0xFFE
+        e.memory[e.i_reg] = 8
+        e.memory[e.i_reg + 1] = 99
+        e.memory[0] = 3
+        e.memory[1] = 5
+        e.memory[2] = 123
+        e.memory[3] = 88
         e.execute_program(0xF565)
         self.assertEqual(e.v_reg[0], 8)
         self.assertEqual(e.v_reg[1], 99)
