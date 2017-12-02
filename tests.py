@@ -4,8 +4,11 @@ import unittest
 
 from multiprocessing import Array, Event, Value
 
+import time
+
 import font
-from emulator import CHIP8Emulator, SCREEN_WIDTH, SCREEN_HEIGHT
+from emulator import CHIP8Emulator, SCREEN_WIDTH, SCREEN_HEIGHT, \
+    OpCodeNotFoundError
 
 
 class EmulatorTests(unittest.TestCase):
@@ -260,6 +263,13 @@ class EmulatorTests(unittest.TestCase):
         e.execute_program(0xF51E)
         self.assertEqual(e.i_reg, 0x56A)
 
+    def test_add_vx_to_i_overflow(self):
+        e = self.emulator
+        e.i_reg = 0xFFAA
+        e.v_reg[5] = 0x58
+        e.execute_program(0xF51E)
+        self.assertEqual(e.i_reg, 0x2)
+
     def test_store_in_i_as_bcd(self):
         e = self.emulator
         e.v_reg[0xe] = 254
@@ -442,8 +452,44 @@ class EmulatorTests(unittest.TestCase):
     # 7211 - add 0x11 to v[2], v[2] == 0x30
     # 8124 - add v[2] to v[1], v[1] == 0x80, v[2] == 0x30
     def test_execute(self):
-        self.emulator.load_program(b'\x61\x50\x62\x1F\x72\x11\x81\x24')
-        self.emulator.execute()
+        try:
+            self.execute_program()
+        except OpCodeNotFoundError:
+            pass
         self.assertEqual(self.emulator.v_reg[1], 0x80)
         self.assertEqual(self.emulator.v_reg[2], 0x30)
         self.assertEqual(self.emulator.v_reg[0xf], 0)
+
+    def test_execute_invalid_opcode(self):
+        self.assertRaises(OpCodeNotFoundError, self.execute_corrupted_program)
+
+    def execute_program(self):
+        self.emulator.load_program(b'\x61\x50\x62\x1F\x72\x11\x81\x24')
+        self.emulator.execute()
+
+    def execute_corrupted_program(self):
+        self.emulator.load_program(b'\x01\x50\x62\x1F\x72\x11\x81\x24')
+        self.emulator.execute()
+
+    def test_delay_timer(self):
+        self.assertEqual(0, self.emulator.delay_timer_value.value)
+        timer_time = 60 * 4
+        self.emulator.v_reg[5] = timer_time
+        self.emulator.execute_program(0xF515)
+        self.assertTrue(
+            timer_time / 2 <=
+            self.emulator.delay_timer_value.value <= timer_time)
+        time.sleep(timer_time / 60 + 1)
+        self.assertEqual(0, self.emulator.delay_timer_value.value)
+
+    def test_set_delay_timer_value(self):
+        timer_time = 60 * 4
+        self.emulator.v_reg[5] = timer_time
+        self.emulator.execute_program(0xF515)
+        time.sleep(timer_time / (4 * 60))
+        self.emulator.execute_program(0xF807)
+        self.assertTrue(self.emulator.v_reg[8] >= timer_time / 2)
+
+
+if __name__ == '__main__':
+    unittest.main()

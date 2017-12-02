@@ -47,7 +47,10 @@ class EmulatorProcess(Process):
 
     def run(self):
         self.emulator.load_program(self.program)
-        self.emulator.execute()
+        try:
+            self.emulator.execute()
+        except EmulatorError as e:
+            print(str(e))
 
 
 def hex_and_dec(value):
@@ -108,16 +111,15 @@ class CHIP8Emulator:
             try:
                 self.execute_program(program_code)
             except OpCodeNotFoundError:
-                print(
-                    "Error at memory position {0} "
-                    "({1} bytes from program start): ".format(
-                        hex_and_dec(self.program_counter),
-                        hex_and_dec(self.program_counter - PROGRAM_START)),
-                    end='')
                 readable_code = hex(program_code)[2:].zfill(4).upper()
-                print('Not found program matching ' + readable_code)
+                error_message = ("Error at memory position {0} "
+                                 "({1} bytes from program start): "
+                                 "Not found program matching " +
+                                 readable_code).format(
+                    hex_and_dec(self.program_counter),
+                    hex_and_dec(self.program_counter - PROGRAM_START))
                 self.close_event.set()
-                return
+                raise OpCodeNotFoundError(error_message)
             if self.use_delay:
                 time.sleep(0.001)
 
@@ -461,5 +463,9 @@ class CHIP8Emulator:
             self.sound_timer.terminate()
 
 
-class OpCodeNotFoundError(Exception):
+class EmulatorError(Exception):
+    pass
+
+
+class OpCodeNotFoundError(EmulatorError):
     pass
