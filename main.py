@@ -62,12 +62,13 @@ def main():
                                  use_delay,
                                  use_sound,
                                  program)
-    p.start()
-    app.exec_()
-    p.terminate()
-    p.join()
-    if bg_music:
-        bg_music.stop()
+    try:
+        p.start()
+        app.exec_()
+    finally:
+        p.terminate()
+        if bg_music:
+            bg_music.stop()
 
 
 def parse_args():
