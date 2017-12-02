@@ -1,4 +1,5 @@
 # !/usr/bin/env python3
+import importlib.util
 import sys
 from argparse import ArgumentParser
 
@@ -12,10 +13,14 @@ PIXEL_DEFAULT_SIDE_SIZE = 15
 
 
 def main():
+    kivy_installed = is_kivy_installed()
     parsed_args = parse_args()
 
     use_delay = not parsed_args.no_delay
     use_sound = not parsed_args.no_sound
+    if not kivy_installed and use_sound:
+        print("Warning: kivy not found, switching to no-sound mode")
+        use_sound = False
 
     pixel_side_size = parsed_args.pixel_size
     if pixel_side_size <= 0:
@@ -29,7 +34,16 @@ def main():
 
     bg_music = None
     bg_music_path = parsed_args.background_music
+
+    sys.argv = sys.argv[:1]
+
+    with open(parsed_args.program_path, 'rb') as f:
+        program = f.read()
+
     if bg_music_path is not None:
+        if not kivy_installed:
+            print("kivy not found, cannot play bg music.")
+            return
         if not os.path.isfile(bg_music_path):
             print('File "{}" not found.'.format(bg_music_path))
             return
@@ -40,10 +54,6 @@ def main():
 
     app = QApplication(sys.argv[0:1])
     ex = CHIP8QScreen(pixel_side_size)
-
-    with open(parsed_args.program_path, 'rb') as f:
-        program = f.read()
-
     p = emulator.EmulatorProcess(ex.pixels_state,
                                  ex.pressed_event,
                                  ex.pressed_key,
@@ -79,6 +89,11 @@ def parse_args():
                         help="Path to a sound file"
                              " that will play in background")
     return parser.parse_args()
+
+
+def is_kivy_installed():
+    spam_spec = importlib.util.find_spec("kivy")
+    return spam_spec is not None
 
 
 if __name__ == '__main__':
