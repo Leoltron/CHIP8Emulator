@@ -89,11 +89,12 @@ class CHIP8Emulator:
                 import sound_timer
                 self.sound_timer = sound_timer\
                     .BeepTimerProcess(1 / 60, self.sound_timer_value)
-                self.sound_timer.start()
             except Exception as e:
                 print("Unexpected error during beeps init: \n\t"+str(e))
-                print("Disabling beeps")
+                print("Beeps has been disabled.")
                 self.use_sound = False
+            else:
+                self.sound_timer.start()
 
         self.pixels_state = pixels_state
         self.key_press_event = key_press_event

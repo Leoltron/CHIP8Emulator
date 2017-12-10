@@ -47,8 +47,14 @@ def main():
         if not os.path.isfile(bg_music_path):
             print('File "{}" not found.'.format(bg_music_path))
             return
-        from kivy.core.audio import SoundLoader
-        bg_music = SoundLoader.load(bg_music_path)
+
+        try:
+            from kivy.core.audio import SoundLoader
+            bg_music = SoundLoader.load(bg_music_path)
+        except Exception as e:
+            print(str(e))
+            bg_music = None
+
         if bg_music:
             bg_music.loop = True
             bg_music.play()
