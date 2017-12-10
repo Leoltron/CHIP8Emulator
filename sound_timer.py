@@ -5,7 +5,10 @@ from kivy.core.audio import SoundLoader
 from timer import TimerProcess
 
 sound = SoundLoader.load('beep.wav')
-sound.loop = True
+if sound:
+    sound.loop = True
+else:
+    print("Unexpected kivy error during beeps loading, beeps won't work.")
 
 
 def stop_beeping():
