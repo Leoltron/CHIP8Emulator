@@ -4,10 +4,10 @@ from multiprocessing import Process, Value, Event
 
 
 class TimerProcess(Process):
-    paused = Event()
-    stopped = Event()
 
     def __init__(self, interval, timer_value: Value, *args, **kwargs):
+        self.paused = Event()
+        self.stopped = Event()
         super().__init__(*args, **kwargs)
         self.interval = interval
         self.timer_value = timer_value
