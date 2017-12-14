@@ -39,7 +39,9 @@ class EmulatorProcess(Process):
         self.emulator.delay_timer.stopped.set()
         self.emulator.delay_timer.join(timeout)
 
-        if self.use_sound:
+        if self.use_sound and \
+                self.emulator.sound_timer is not None and\
+                self.emulator.sound_timer.is_alive():
             self.emulator.sound_timer.stopped.set()
             self.emulator.sound_timer.join(timeout)
 
@@ -81,11 +83,18 @@ class CHIP8Emulator:
         self.delay_timer.start()
 
         self.sound_timer_value = Value('i', 0)
+        self.sound_timer = None
         if use_sound:
-            import sound_timer
-            self.sound_timer = sound_timer.BeepTimerProcess(1 / 60,
-                                                            self.sound_timer_value)
-            self.sound_timer.start()
+            try:
+                import sound_timer
+                self.sound_timer = sound_timer\
+                    .BeepTimerProcess(1 / 60, self.sound_timer_value)
+            except Exception as e:
+                print("Unexpected error during beeps init: \n\t"+str(e))
+                print("Beeps has been disabled.")
+                self.use_sound = False
+            else:
+                self.sound_timer.start()
 
         self.pixels_state = pixels_state
         self.key_press_event = key_press_event

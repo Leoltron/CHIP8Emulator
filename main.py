@@ -47,10 +47,20 @@ def main():
         if not os.path.isfile(bg_music_path):
             print('File "{}" not found.'.format(bg_music_path))
             return
-        from kivy.core.audio import SoundLoader
-        bg_music = SoundLoader.load(bg_music_path)
-        bg_music.loop = True
-        bg_music.play()
+
+        try:
+            from kivy.core.audio import SoundLoader
+            bg_music = SoundLoader.load(bg_music_path)
+        except Exception as e:
+            print(str(e))
+            bg_music = None
+
+        if bg_music:
+            bg_music.loop = True
+            bg_music.play()
+        else:
+            print("Unexpected error during music loading.")
+            print("Background music has been disabled.")
 
     app = QApplication(sys.argv[0:1])
     ex = CHIP8QScreen(pixel_side_size)
